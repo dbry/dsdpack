@@ -9,11 +9,8 @@
 Experimental lossless DSD compressor.
 
 Builds on Linux, and probably Windows and OS X with very minimal (if any)
-changes. Includes command-line program and a module for each of the three
-modes (fast, normal, and high). Note that the normal (default) mode does
-NOT provide a good balance of compression and performance and is only
-provided as a reference; use only the fast or high modes depending on your
-needs.
+changes. Includes command-line program and a module for each of the two
+modes (fast and high).
 
 Note that this is a "raw" compressor in that it does not process any headers
 or non-dsd data. However, since it is lossless, any headers present in the
@@ -23,21 +20,26 @@ type of arbitrary file (although usually with dismal results).
 Since it is "raw", the data must be formatted in a specific way, and that
 way happens to be the way that Philips DSDIFF files are formatted. In other
 words, the data is straight bytes for mono, interleaved bytes for stereo,
-and the MSB of each byte is considered first temporily (and LSB last,
-obviously). Files in Sony's DSF format will have to be unblocked (if stereo)
-and the bytes will need to be reversed. Multichannel files are not handled.
+and the MSB of each byte is considered first temporily (and the LSB last,
+obviously). Files in Sony's DSF format will have to be unblocked and the
+bytes will need to be reversed. Multichannel files are not handled.
 
-Since there is no header processing mono files cannot be detected, so there
-is a command-line switch to specify that (stereo is the default).
+Since there is no header processing, mono files cannot be automatically
+detected, so there is a command-line switch to specify that (stereo is the
+default). For version 0.5 independent block generating was added, with a
+default block size of 47040 bytes (1/15 second at standard DSD rate), but
+this can be overridden with a command-line option. Note that the "fast"
+mode does not do particularly well with very short blocks.
 
- Version: 0.4.1
+ Version: 0.5.0
 
  Usage:   DSDPACK [-options] infile outfile
 
- Options: -d  = decode
-          -1  = mono mode (encode only)
-          -2  = stereo mode (encode only, default)
-          -f  = fast mode (encode only)
-          -h  = high mode (encode only)
+ Options: -d     = decode
+          -1     = mono mode (encode only)
+          -2     = stereo mode (encode only, default)
+          -f     = fast mode (encode only, default)
+          -h     = high mode (encode only)
+          -b<n>  = block size (encode only, default = 47040)
 
  Warning: EXPERIMENTAL - USE AT YOUR OWN RISK!!

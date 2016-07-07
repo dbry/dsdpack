@@ -25,7 +25,7 @@
 
 // #define DUMP_INFO
 
-#define MAX_HISTORY_BITS    6
+#define MAX_HISTORY_BITS    5
 #define MAX_PROBABILITY     0xbf
 #define MAX_RLE_ZEROS       (0xff - MAX_PROBABILITY)
 
@@ -158,7 +158,9 @@ static void calculate_probabilities (int hist [256], unsigned char probs [256], 
             continue;
         }
 
-#if 0
+#if 0   // this code reduces probability values when they are completely redundant (i.e., common divisor), but
+        // this doesn't really happen often enough to make it worthwhile
+
         if (min_value > 1) {
             for (i = 0; i < 256; ++i)
                 if (probs [i] % min_value)
@@ -170,7 +172,7 @@ static void calculate_probabilities (int hist [256], unsigned char probs [256], 
                     probs [i] /= min_value;
                 }
 
-                // fprintf (stderr, "**** fixed min_value = %d, divisor = %d, probs_sum = %d\n", min_value, divisor, prob_sums [255]);
+                // fprintf (stderr, "fixed min_value = %d, divisor = %d, probs_sum = %d\n", min_value, divisor, prob_sums [255]);
             }
         }
 #endif
@@ -201,6 +203,9 @@ static int encode_buffer (unsigned char *buffer, int num_samples, int stereo, FI
     else
         history_bits = 6;
 
+    if (history_bits > MAX_HISTORY_BITS)
+        history_bits = MAX_HISTORY_BITS;
+
     history_bins = 1 << history_bits;
     histogram = malloc (sizeof (*histogram) * history_bins);
     memset (histogram, 0, sizeof (*histogram) * history_bins);
@@ -224,10 +229,33 @@ static int encode_buffer (unsigned char *buffer, int num_samples, int stereo, FI
         total_summed_probabilities += summed_probabilities [p0] [255];
     }
 
-    // for now this triggers a verbatim data write, but we could actually reduce this other ways
+    // This code detects the case where the required value lookup tables grow silly big and cuts them back down. This would
+    // normally only happen with large blocks or poorly compressible data. The target is to guarantee that the total memory
+    // required for all three decode tables will be 2K bytes per history bin.
 
-    if (total_summed_probabilities > history_bins * 2048) {
-        fprintf (stderr, "tsp = %d, average = %d\n", total_summed_probabilities, total_summed_probabilities / history_bins);
+    while (total_summed_probabilities > history_bins * 1280) {
+        int max_sum = 0, sum_values = 0, largest_bin;
+
+        for (p0 = 0; p0 < history_bins; ++p0)
+            if (summed_probabilities [p0] [255] > max_sum) {
+                max_sum = summed_probabilities [p0] [255];
+                largest_bin = p0;
+            }
+
+        total_summed_probabilities -= max_sum;
+        p0 = largest_bin;
+
+        for (p1 = 0; p1 < 256; ++p1)
+            summed_probabilities [p0] [p1] = sum_values += probabilities [p0] [p1] = (probabilities [p0] [p1] + 1) >> 1;
+
+        total_summed_probabilities += summed_probabilities [p0] [255];
+        // fprintf (stderr, "processed bin 0x%02x, bin: %d --> %d, new sum = %d\n",
+        //     p0, max_sum, summed_probabilities [p0] [255], total_summed_probabilities);
+    }
+
+    // for now this tests a verbatim data write (which works on the decode side), but we can't really detect when to do this yet
+#if 0
+    if (1) {
         history_bits = 0;
         bytes_written = fwrite (&num_samples, 1, sizeof (num_samples), outfile);
         bytes_written += fwrite (&history_bits, 1, sizeof (history_bits), outfile);
@@ -238,6 +266,7 @@ static int encode_buffer (unsigned char *buffer, int num_samples, int stereo, FI
         free (output_buffer);
         return bytes_written;
     }
+#endif
 
     free (histogram);
     bp = buffer;

@@ -26,8 +26,8 @@
 // #define DUMP_INFO
 
 #define MAX_HISTORY_BITS    5
-#define MAX_PROBABILITY     0xbf
-#define MAX_RLE_ZEROS       (0xff - MAX_PROBABILITY)
+#define MAX_PROBABILITY     0xbf    // set to 0xff to disable RLE encoding for probabilities table
+#define NO_COMPRESSION      0xff    // send this for HISTORY_BITS to disable compression for block
 
 static void calculate_probabilities (int hist [256], unsigned char probs [256], unsigned short prob_sums [256]);
 static int encode_buffer (unsigned char *buffer, int num_samples, int stereo, FILE *outfile);
@@ -69,17 +69,18 @@ int encode_fast (FILE *infile, FILE *outfile, int stereo, int block_size)
     return 0;
 }
 
-#ifdef MAX_RLE_ZEROS
+#if (MAX_PROBABILITY < 0xff)
 
 static int rle_encode (unsigned char *src, int bcount, FILE *outfile)
 {
+    int max_rle_zeros = 0xff - MAX_PROBABILITY;
     int outbytes = 0, zcount = 0;
 
     while (bcount--) {
         if (*src) {
             while (zcount) {
-                fputc (MAX_PROBABILITY + (zcount > MAX_RLE_ZEROS ? MAX_RLE_ZEROS : zcount), outfile);
-                zcount -= (zcount > MAX_RLE_ZEROS ? MAX_RLE_ZEROS : zcount);
+                fputc (MAX_PROBABILITY + (zcount > max_rle_zeros ? max_rle_zeros : zcount), outfile);
+                zcount -= (zcount > max_rle_zeros ? max_rle_zeros : zcount);
                 outbytes++;
             }
 
@@ -93,8 +94,8 @@ static int rle_encode (unsigned char *src, int bcount, FILE *outfile)
     }
 
     while (zcount) {
-        fputc (MAX_PROBABILITY + (zcount > MAX_RLE_ZEROS ? MAX_RLE_ZEROS : zcount), outfile);
-        zcount -= (zcount > MAX_RLE_ZEROS ? MAX_RLE_ZEROS : zcount);
+        fputc (MAX_PROBABILITY + (zcount > max_rle_zeros ? max_rle_zeros : zcount), outfile);
+        zcount -= (zcount > max_rle_zeros ? max_rle_zeros : zcount);
         outbytes++;
     }
 
@@ -184,6 +185,7 @@ static void calculate_probabilities (int hist [256], unsigned char probs [256], 
 static int encode_buffer (unsigned char *buffer, int num_samples, int stereo, FILE *outfile)
 {
     unsigned char *output_buffer = malloc (65536+256), *outp = output_buffer;
+    char history_bits, max_probability = MAX_PROBABILITY;
     int history_bins, bytes_written, p0 = 0, p1 = 0;
     unsigned int low = 0, high = 0xffffffff, mult;
     unsigned short (*summed_probabilities) [256];
@@ -192,7 +194,6 @@ static int encode_buffer (unsigned char *buffer, int num_samples, int stereo, FI
     unsigned char *bp = buffer;
     int (*histogram) [256];
     int bc = num_samples;
-    char history_bits;
 
     if (num_samples < 15000)
         history_bits = 3;
@@ -256,7 +257,7 @@ static int encode_buffer (unsigned char *buffer, int num_samples, int stereo, FI
     // for now this tests a verbatim data write (which works on the decode side), but we can't really detect when to do this yet
 #if 0
     if (1) {
-        history_bits = 0;
+        history_bits = NO_COMPRESSION;
         bytes_written = fwrite (&num_samples, 1, sizeof (num_samples), outfile);
         bytes_written += fwrite (&history_bits, 1, sizeof (history_bits), outfile);
         bytes_written += fwrite (buffer, 1, num_samples, outfile);
@@ -273,12 +274,14 @@ static int encode_buffer (unsigned char *buffer, int num_samples, int stereo, FI
     bc = num_samples;
     bytes_written = fwrite (&num_samples, 1, sizeof (num_samples), outfile);
     bytes_written += fwrite (&history_bits, 1, sizeof (history_bits), outfile);
+    bytes_written += fwrite (&max_probability, 1, sizeof (max_probability), outfile);
 
-#ifdef MAX_RLE_ZEROS
+#if (MAX_PROBABILITY < 0xff)
     bytes_written += rle_encode ((unsigned char *) probabilities, sizeof (*probabilities) * history_bins, outfile);
 #else
     bytes_written += fwrite (probabilities, 1, sizeof (*probabilities) * history_bins, outfile);
 #endif
+
     p0 = p1 = 0;
 
     while (bc--) {
@@ -401,8 +404,8 @@ static int encode_buffer (unsigned char *buffer, int num_samples, int stereo, FI
 
 int decode_fast (FILE *infile, FILE *outfile, int stereo)
 {
+    unsigned char (*probabilities) [256] = NULL, **value_lookup = NULL, history_bits, max_probability;
     unsigned char *input_buffer = malloc (BUFFER_SIZE), *inp = input_buffer, *inpx = input_buffer;
-    unsigned char (*probabilities) [256] = NULL, **value_lookup = NULL, history_bits;
     long long total_bytes_read = 12, total_bytes_written = 0;
     unsigned short (*summed_probabilities) [256] = NULL;
     int num_samples, history_bins, allocated_bins = 0;
@@ -437,12 +440,7 @@ int decode_fast (FILE *infile, FILE *outfile, int stereo)
 
         history_bits = *inp++;
 
-        if (history_bits > MAX_HISTORY_BITS) {
-            fprintf (stderr, "fatal decoding error, history bits = %d\n", history_bits);
-            return 1;
-        }
-
-        if (!history_bits) {
+        if (history_bits == NO_COMPRESSION) {
             outp = output_buffer = malloc (num_samples);
 
             while (num_samples--) {
@@ -461,6 +459,11 @@ int decode_fast (FILE *infile, FILE *outfile, int stereo)
             continue;
         }
 
+        if (history_bits > MAX_HISTORY_BITS) {
+            fprintf (stderr, "fatal decoding error, history bits = %d\n", history_bits);
+            return 1;
+        }
+
         history_bins = 1 << history_bits;
 
         if (!allocated_bins || allocated_bins < history_bins) {
@@ -470,39 +473,49 @@ int decode_fast (FILE *infile, FILE *outfile, int stereo)
             allocated_bins = history_bins;
         }
 
-#ifdef MAX_RLE_ZEROS
-        outp = (char *) probabilities;
+        if (inp == inpx) {
+            total_bytes_read += (inpx = input_buffer + fread (inp = input_buffer, 1, BUFFER_SIZE, infile)) - inp;
 
-        while (1) {
             if (inp == inpx)
-                total_bytes_read += (inpx = input_buffer + fread (inp = input_buffer, 1, BUFFER_SIZE, infile)) - inp;
-
-            if (*inp > MAX_PROBABILITY) {
-                int zcount = *inp++ - MAX_PROBABILITY;
-
-                while (zcount--)
-                    *outp++ = 0;
-            }
-            else if (*inp)
-                *outp++ = *inp++;
-            else {
-                inp++;
                 break;
+        }
+
+        max_probability = *inp++;
+
+        if (max_probability < 0xff) {
+            outp = (char *) probabilities;
+
+            while (1) {
+                if (inp == inpx)
+                    total_bytes_read += (inpx = input_buffer + fread (inp = input_buffer, 1, BUFFER_SIZE, infile)) - inp;
+
+                if (*inp > max_probability) {
+                    int zcount = *inp++ - max_probability;
+
+                    while (zcount--)
+                        *outp++ = 0;
+                }
+                else if (*inp)
+                    *outp++ = *inp++;
+                else {
+                    inp++;
+                    break;
+                }
+            }
+
+            if (outp != (char *) probabilities + sizeof (*probabilities) * history_bins) {
+                fprintf (stderr, "fatal decoding error!\n");
+                return 1;
             }
         }
+        else {
+            for (i = 0; i < sizeof (*probabilities) * history_bins; ++i) {
+                if (inp == inpx)
+                    total_bytes_read += (inpx = input_buffer + fread (inp = input_buffer, 1, BUFFER_SIZE, infile)) - inp;
 
-        if (outp != (char *) probabilities + sizeof (*probabilities) * history_bins) {
-            fprintf (stderr, "fatal decoding error!\n");
-            return 1;
+                ((char *) probabilities) [i] = *inp++;
+            }
         }
-#else
-        for (i = 0; i < sizeof (*probabilities) * history_bins; ++i) {
-            if (inp == inpx)
-                total_bytes_read += (inpx = input_buffer + fread (inp = input_buffer, 1, BUFFER_SIZE, infile)) - inp;
-
-            ((char *) probabilities) [i] = *inp++;
-        }
-#endif
 
         outp = output_buffer = malloc (num_samples);
 

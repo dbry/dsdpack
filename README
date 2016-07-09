@@ -6,7 +6,10 @@
 //      Distributed under the BSD Software License (see license.txt)      //
 ////////////////////////////////////////////////////////////////////////////
 
-Experimental lossless DSD compressor.
+Experimental lossless DSD compressor. This program is for experimentation
+only and should not be used for archiving DSD material. It does divide the
+audio into independent blocks, however the blocks are not seekable and it is
+possible that a single bit error could render an entire file useless.
 
 Builds on Linux, and probably Windows and OS X with very minimal (if any)
 changes. Includes command-line program and a module for each of the two
@@ -20,9 +23,9 @@ type of arbitrary file (although usually with dismal results).
 Since it is "raw", the data must be formatted in a specific way, and that
 way happens to be the way that Philips DSDIFF files are formatted. In other
 words, the data is straight bytes for mono, interleaved bytes for stereo,
-and the MSB of each byte is considered first temporily (and the LSB last,
-obviously). Files in Sony's DSF format will have to be unblocked and the
-bytes will need to be reversed. Multichannel files are not handled.
+and the MSB of each byte is considered first temporily. Files in Sony's DSF
+format will have to be unblocked and the bytes will need to be reversed.
+Multichannel files are not handled.
 
 Since there is no header processing, mono files cannot be automatically
 detected, so there is a command-line switch to specify that (stereo is the

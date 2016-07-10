@@ -118,8 +118,8 @@ static void calculate_probabilities (int hist [256], unsigned char probs [256], 
     }
 
     if (max_hits == 0) {
-        memset (probs, 0, sizeof (probs));
-        memset (prob_sums, 0, sizeof (prob_sums));
+        memset (probs, 0, sizeof (*probs) * 256);
+        memset (prob_sums, 0, sizeof (*prob_sums) * 256);
         return;
     }
 

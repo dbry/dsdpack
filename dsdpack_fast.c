@@ -26,7 +26,7 @@
 // #define DUMP_INFO
 
 #define MAX_HISTORY_BITS    5
-#define MAX_PROBABILITY     0xbf    // set to 0xff to disable RLE encoding for probabilities table
+#define MAX_PROBABILITY     0xa0    // set to 0xff to disable RLE encoding for probabilities table
 #define NO_COMPRESSION      0xff    // send this for HISTORY_BITS to disable compression for block
 
 static void calculate_probabilities (int hist [256], unsigned char probs [256], unsigned short prob_sums [256]);
@@ -125,10 +125,10 @@ static void calculate_probabilities (int hist [256], unsigned char probs [256], 
 
 //  fprintf (stderr, "process_histogram(): hits = %d to %d\n", min_hits, max_hits);
 
-    divisor = max_hits / MAX_PROBABILITY;
-
-    if (divisor < 1)
-        divisor = 1;
+    if (max_hits > MAX_PROBABILITY)
+        divisor = ((max_hits << 8) + (MAX_PROBABILITY >> 1)) / MAX_PROBABILITY;
+    else
+        divisor = 0;
 
     while (1) {
         min_value = 0x7fffffff; max_value = 0; sum_values = 0;
@@ -139,22 +139,26 @@ static void calculate_probabilities (int hist [256], unsigned char probs [256], 
         for (i = 0; i < 256; ++i) {
             int value;
 
-            if (hist [i] == 0)
-                value = 0;
-            else {
-                if (hist [i] / divisor == 0)
-                    value = 1;
+            if (hist [i]) {
+                if (divisor) {
+                    if (!(value = ((hist [i] << 8) + (divisor >> 1)) / divisor))
+                        value = 1;
+                }
                 else
-                    value = (hist [i] + divisor/2) / divisor;
+                    value = hist [i];
 
                 if (value < min_value) min_value = value;
                 if (value > max_value) max_value = value;
             }
+            else
+                value = 0;
+
             prob_sums [i] = sum_values += value;
             probs [i] = value;
         }
 
         if (max_value > MAX_PROBABILITY) {
+            fprintf (stderr, "calculate_probabilities(): re-looping!\n");
             divisor++;
             continue;
         }

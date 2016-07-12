@@ -29,10 +29,10 @@ Multichannel files are not handled.
 
 Since there is no header processing, mono files cannot be automatically
 detected, so there is a command-line switch to specify that (stereo is the
-default). For version 0.5 independent block generating was added, with a
-default block size of 47040 bytes (1/15 second at standard DSD rate), but
-this can be overridden with a command-line option. Note that the "fast"
-mode does not do particularly well with very short blocks.
+default). For version 0.5 independent block generation was added, with a
+default block size of 88200 bytes (1/8 second at standard DSD rate), but
+this can be overridden with a command-line option. Note that the "high"
+mode works much better with very short blocks than the default.
 
  Version: 0.5.0
 
@@ -43,6 +43,6 @@ mode does not do particularly well with very short blocks.
           -2     = stereo mode (encode only, default)
           -f     = fast mode (encode only, default)
           -h     = high mode (encode only)
-          -b<n>  = block size (encode only, default = 47040)
+          -b<n>  = block size (encode only, default = 88200)
 
  Warning: EXPERIMENTAL - USE AT YOUR OWN RISK!!

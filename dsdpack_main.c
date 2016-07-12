@@ -17,7 +17,7 @@
 #include <fcntl.h>
 #include <time.h>
 
-#define BLOCK_SIZE 47040
+#define BLOCK_SIZE 88200
 
 int encode_fast (FILE *infile, FILE *outfile, int stereo, int block_size);
 int decode_fast (FILE *infile, FILE *outfile, int stereo);
@@ -102,8 +102,8 @@ int main (argc, argv) int argc; char **argv;
                         block_size = strtol (++*argv, argv, 10);
                         --*argv;
 
-                        if (block_size < 1024 || block_size > 1024*1024) {
-                            fprintf (stderr, "block size must be 1KB - 1MB\n");
+                        if (block_size < 8192 || block_size > 1024*1024) {
+                            fprintf (stderr, "block size must be 8KB - 1MB\n");
                             ++error_count;
                         }
 

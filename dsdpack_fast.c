@@ -25,7 +25,7 @@
 
 // #define DUMP_INFO
 
-#define MAX_HISTORY_BITS    5
+#define MAX_HISTORY_BITS    8       // can be as high as 8, determines ram footprint
 #define MAX_PROBABILITY     0xa0    // set to 0xff to disable RLE encoding for probabilities table
 #define NO_COMPRESSION      0xff    // send this for HISTORY_BITS to disable compression for block
 
@@ -133,9 +133,6 @@ static void calculate_probabilities (int hist [256], unsigned char probs [256], 
     while (1) {
         min_value = 0x7fffffff; max_value = 0; sum_values = 0;
 
-        memset (probs, 0, sizeof (probs));
-        memset (prob_sums, 0, sizeof (prob_sums));
-
         for (i = 0; i < 256; ++i) {
             int value;
 
@@ -199,14 +196,24 @@ static int encode_buffer (unsigned char *buffer, int num_samples, int stereo, FI
     int (*histogram) [256];
     int bc = num_samples;
 
-    if (num_samples < 15000)
+    if (num_samples < 525)
+        history_bits = 0;
+    else if (num_samples < 1725)
+        history_bits = 1;
+    else if (num_samples < 5000)
+        history_bits = 2;
+    else if (num_samples < 14000)
         history_bits = 3;
-    else if (num_samples < 32000)
+    else if (num_samples < 28000)
         history_bits = 4;
-    else if (num_samples < 80000)
+    else if (num_samples < 76000)
         history_bits = 5;
-    else
+    else if (num_samples < 130000)
         history_bits = 6;
+    else if (num_samples < 300000)
+        history_bits = 7;
+    else
+        history_bits = 8;
 
     if (history_bits > MAX_HISTORY_BITS)
         history_bits = MAX_HISTORY_BITS;

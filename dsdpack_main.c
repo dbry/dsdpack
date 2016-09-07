@@ -29,10 +29,10 @@ static int decode (FILE *infile, FILE *outfile)
     char preamble [12];
     int stereo;
 
-    if (fread (preamble, 1, 12, infile) != 12 || strncmp (preamble, "dsdpack0.5", 10) ||
+    if (fread (preamble, 1, 12, infile) != 12 || strncmp (preamble, "dsdpack0.6", 10) ||
         (preamble [10] != 'F' && preamble [10] != 'H') ||
         (preamble [11] != '1' && preamble [11] != '2')) {
-            fprintf (stderr, "not a valid dsdpack 0.5 file!\n");
+            fprintf (stderr, "not a valid dsdpack 0.6 file!\n");
             return 1;
     }
 
@@ -43,7 +43,7 @@ static int decode (FILE *infile, FILE *outfile)
     else if (preamble [10] == 'H')
         return decode_high (infile, outfile, stereo);
     else {
-        fprintf (stderr, "not a valid dsdpack 0.5 file!\n");
+        fprintf (stderr, "not a valid dsdpack 0.6 file!\n");
         return 1;
     }
 }
@@ -51,7 +51,7 @@ static int decode (FILE *infile, FILE *outfile)
 /*------------------------------------------------------------------------------------------------------------------------*/
 
 static const char *usage = "\n"
-" Version: 0.5.0\n\n"
+" Version: 0.6.0\n\n"
 " Usage:   DSDPACK [-options] infile outfile\n\n"
 " Options: -d     = decode\n"
 "          -1     = mono mode (encode only)\n"

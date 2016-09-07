@@ -34,7 +34,11 @@ default block size of 88200 bytes (1/8 second at standard DSD rate), but
 this can be overridden with a command-line option. Note that the "high"
 mode works much better with very short blocks than the default.
 
- Version: 0.5.0
+For version 0.6, the "high" mode was refactored so that the left and
+right channels in stereo are processed bit-by-bit in parallel, rather than
+byte-by-byte. This should make it possible to use SIMD instructions.
+
+ Version: 0.6.0
 
  Usage:   DSDPACK [-options] infile outfile
 

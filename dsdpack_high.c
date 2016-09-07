@@ -30,20 +30,18 @@
 #define PTABLE_MASK (PTABLE_BINS-1)
 
 typedef struct chan_state {
-    int filter1, filter2, filter3, filter4, filter5, filter6, factor;
+    int filter1, filter2, filter3, filter4, filter5, filter6, factor, byte;
 } ChanState;
 
 #define UP   0x010000fe
 #define DOWN 0x00010000
 #define DECAY 8
 
-#define PRECISION 24
+#define PRECISION 20
 #define VALUE_ONE (1 << PRECISION)
 #define PRECISION_USE 12
 
 #define RATE_S 20
-
-// #define OUTPUT_PCM_STDOUT 24
 
 #ifdef DUMP_INFO
 
@@ -157,14 +155,14 @@ int encode_high (FILE *infile, FILE *outfile, int stereo, int block_size)
 
     init_ptable (ptable, 2048/PTABLE_BINS, RATE_S);
 
-    for (channel = 0; channel < 2; ++channel) {
+    for (channel = 0; channel <= stereo; ++channel) {
         sp = state + channel;
 
         sp->filter1 = sp->filter2 = sp->filter3 = sp->filter4 = sp->filter5 = VALUE_ONE / 2;
         sp->filter6 = sp->factor = 0;
     }
 
-    memcpy (outp, "dsdpack0.5", 10);
+    memcpy (outp, "dsdpack0.6", 10);
     outp += 10;
     *outp++ = 'H';
     *outp++ = stereo + '1';
@@ -185,6 +183,11 @@ int encode_high (FILE *infile, FILE *outfile, int stereo, int block_size)
         }
 #endif
 
+        *outp++ = input_bytes;
+        *outp++ = input_bytes >> 8;
+        *outp++ = input_bytes >> 16;
+        *outp++ = input_bytes >> 24;
+
         bytes_read += input_bytes;
         high = 0xffffffff;
         low = 0;
@@ -196,7 +199,7 @@ int encode_high (FILE *infile, FILE *outfile, int stereo, int block_size)
         *outp++ = rate;
         *outp++ = RATE_S;
 
-        for (channel = 0; channel < (stereo ? 2 : 1); ++channel) {
+        for (channel = 0; channel <= stereo; ++channel) {
             sp = state + channel;
 
             *outp++ = (sp->filter1 + 32768) >> 16;
@@ -213,43 +216,43 @@ int encode_high (FILE *infile, FILE *outfile, int stereo, int block_size)
             sp->filter4 = ((sp->filter4 + 32768) >> 16) << 16;
             sp->filter5 = ((sp->filter5 + 32768) >> 16) << 16;
             sp->filter6 = 0;
-            sp->factor = (sp->factor << 16) >> 16;
         }
 
-        channel = 0;
+        if (stereo) {
+            if (input_bytes & 1) {
+                inp [input_bytes] = 0x55;
+                input_bytes = (input_bytes + 1) >> 1;
+            }
+            else
+                input_bytes >>= 1;
+        }
 
         while (input_bytes--) {
-            int byte = *inp++, bitcount = 8;
-#ifdef OUTPUT_PCM_STDOUT
-            int filter5_sum = 0;
-#endif
-            sp = state + channel;
-            low++;
+            int bitcount = 8 << stereo;
 
-            while ((high >> 24) == (low >> 24)) {
-                *outp++ = high >> 24;
-                high = (high << 8) | 0xff;
-                low <<= 8;
-            }
+            sp = state + (channel = 0);
+            sp->byte = *inp++;
+
+            if (stereo)
+                state [1].byte = *inp++;
 
             while (bitcount--) {
-                int value = sp->filter1 - sp->filter5 + sp->filter6 * (sp->factor >> 2);
-                int index = (value >> (PRECISION - PRECISION_USE)) & PTABLE_MASK;
-                int *val = ptable + index;
+                int value = sp->filter1 - sp->filter5 + ((sp->filter6 * sp->factor) >> 2);
+                int *pp = ptable + ((value >> (PRECISION - PRECISION_USE)) & PTABLE_MASK);
 #ifdef DUMP_INFO
                 if (!++htable [index]) htable [index] = -1;
 #endif
-                if (byte & 0x80) {
-                    high = low + (((high - low) >> 24) ? ((high - low) >> 8) * (*val >> 16) : (((high - low) * (*val >> 16)) >> 8));
-                    *val += (UP - *val) >> DECAY;
+                if (sp->byte & 0x80) {
+                    high = low + ((high - low) >> 8) * (*pp >> 16);
+                    *pp += (UP - *pp) >> DECAY;
                     sp->filter1 += (VALUE_ONE - sp->filter1) >> 6;
                     sp->filter2 += (VALUE_ONE - sp->filter2) >> 4;
                 }
                 else {
-                    low += 1 + (((high - low) >> 24) ? ((high - low) >> 8) * (*val >> 16) : (((high - low) * (*val >> 16)) >> 8));
-                    *val += (DOWN - *val) >> DECAY;
-                    sp->filter1 -= sp->filter1 >> 6;
-                    sp->filter2 -= sp->filter2 >> 4;
+                    low += 1 + ((high - low) >> 8) * (*pp >> 16);
+                    *pp += (DOWN - *pp) >> DECAY;
+                    sp->filter1 += -sp->filter1 >> 6;
+                    sp->filter2 += -sp->filter2 >> 4;
                 }
 
                 while ((high >> 24) == (low >> 24)) {
@@ -259,31 +262,20 @@ int encode_high (FILE *infile, FILE *outfile, int stereo, int block_size)
                 }
 
                 if (((value + (sp->filter6 << 3)) ^ (value - (sp->filter6 << 3))) < 0)
-                    sp->factor += (((value + (sp->filter6 << 3)) ^ (byte << 24)) >> 31) | 1;
+                    sp->factor += (((value + (sp->filter6 << 3)) ^ (sp->byte << 24)) >> 31) | 1;
 
                 sp->filter3 += (sp->filter2 - sp->filter3) >> 4;
                 sp->filter4 += (sp->filter3 - sp->filter4) >> 4;
                 sp->filter5 += value = (sp->filter4 - sp->filter5) >> 4;
                 sp->filter6 += (value - sp->filter6) >> 3;
-#ifdef OUTPUT_PCM_STDOUT
-                filter5_sum += sp->filter5;
-#endif
-                byte <<= 1;
+                sp->byte <<= 1;
+                sp = state + (channel ^= stereo);
             }
 
-#ifdef OUTPUT_PCM_STDOUT
-            int pcm = (filter5_sum - VALUE_ONE * 4) >> (PRECISION - OUTPUT_PCM_STDOUT + 3);
+            sp->factor -= (sp->factor + 512) >> 10;
 
-            putchar (pcm & 0xff);
-
-            if (OUTPUT_PCM_STDOUT > 8)
-                putchar ((pcm >> 8) & 0xff);
-
-            if (OUTPUT_PCM_STDOUT > 16)
-                putchar ((pcm >> 16) & 0xff);
-#endif
-
-            channel ^= stereo;
+            if (stereo)
+                state [1].factor -= (state [1].factor + 512) >> 10;
 
             if (outp - output_buffer >= 65536) {
                 bytes_written += fwrite (output_buffer, 1, 65536, outfile);
@@ -323,13 +315,13 @@ int decode_high (FILE *infile, FILE *outfile, int stereo)
     char *output_buffer = malloc (65536), *outp = output_buffer;
     unsigned int high = 0xffffffff, low = 0x0, fraction;
     long long bytes_read = 12, bytes_written = 0;
+    int num_loops, num_samples, channel, i;
     time_t start_time = time (NULL);
     int ptable [PTABLE_BINS];
     ChanState state [2], *sp;
-    int channel, i;
 
     while (1) {
-        unsigned char preamble [16], *pp = preamble;
+        unsigned char preamble [20], *pp = preamble;
         int i, rate_i, rate_s;
 
         if (inp == inpx)
@@ -338,7 +330,7 @@ int decode_high (FILE *infile, FILE *outfile, int stereo)
         if (inp == inpx)
             break;
 
-        while (pp - preamble < (stereo ? 16 : 9)) {
+        while (pp - preamble < (stereo ? 20 : 13)) {
             if (inp == inpx)
                 bytes_read += (inpx = input_buffer + fread (inp = input_buffer, 1, BUFFER_SIZE, infile)) - inp;
 
@@ -346,6 +338,10 @@ int decode_high (FILE *infile, FILE *outfile, int stereo)
         }
 
         pp = preamble;
+        num_samples = *pp++;
+        num_samples |= *pp++ << 8;
+        num_samples |= *pp++ << 16;
+        num_samples |= *pp++ << 24;
         rate_i = *pp++;
         rate_s = *pp++;
 
@@ -356,7 +352,7 @@ int decode_high (FILE *infile, FILE *outfile, int stereo)
 
         init_ptable (ptable, rate_i, rate_s);
 
-        for (channel = 0; channel < (stereo ? 2 : 1); ++channel) {
+        for (channel = 0; channel <= stereo; ++channel) {
             sp = state + channel;
 
             sp->filter1 = *pp++ << 16;
@@ -380,43 +376,31 @@ int decode_high (FILE *infile, FILE *outfile, int stereo)
             fraction = (fraction << 8) | *inp++;
         }
 
-        channel = 0;
+        num_loops = (num_samples + stereo) >> stereo;
 
-        while (fraction > low++) {
-            int byte = 0, bitcount = 8;
+        while (num_loops--) {
+            int bitcount = 8 << stereo;
 
-            sp = state + channel;
-
-            while ((high >> 24) == (low >> 24)) {
-                if (inp == inpx)
-                    bytes_read += (inpx = input_buffer + fread (inp = input_buffer, 1, BUFFER_SIZE, infile)) - inp;
-
-                fraction = (fraction << 8) | *inp++;
-                high = (high << 8) | 0xff;
-                low <<= 8;
-            }
+            sp = state + (channel = 0);
 
             while (bitcount--) {
-                int value = sp->filter1 - sp->filter5 + sp->filter6 * (sp->factor >> 2);
-                int index = (value >> (PRECISION - PRECISION_USE)) & PTABLE_MASK;
-                unsigned int range = high - low, split;
-                int *val = ptable + index;
-
-                split = low + ((range & 0xff000000) ? (range >> 8) * (*val >> 16) : ((range * (*val >> 16)) >> 8));
+                int value = sp->filter1 - sp->filter5 + ((sp->filter6 * sp->factor) >> 2);
+                int *pp = ptable + ((value >> (PRECISION - PRECISION_USE)) & PTABLE_MASK);
+                unsigned int split = low + ((high - low) >> 8) * (*pp >> 16);
 
                 if (fraction <= split) {
                     high = split;
-                    byte = (byte << 1) | 1;
-                    *val += (UP - *val) >> DECAY;
+                    sp->byte = (sp->byte << 1) | 1;
+                    *pp += (UP - *pp) >> DECAY;
                     sp->filter1 += (VALUE_ONE - sp->filter1) >> 6;
                     sp->filter2 += (VALUE_ONE - sp->filter2) >> 4;
                 }
                 else {
                     low = split + 1;
-                    byte <<= 1;
-                    *val += (DOWN - *val) >> DECAY;
-                    sp->filter1 -= sp->filter1 >> 6;
-                    sp->filter2 -= sp->filter2 >> 4;
+                    sp->byte <<= 1;
+                    *pp += (DOWN - *pp) >> DECAY;
+                    sp->filter1 += -sp->filter1 >> 6;
+                    sp->filter2 += -sp->filter2 >> 4;
                 }
 
                 while ((high >> 24) == (low >> 24)) {
@@ -429,20 +413,31 @@ int decode_high (FILE *infile, FILE *outfile, int stereo)
                 }
 
                 if (((value + (sp->filter6 << 3)) ^ (value - (sp->filter6 << 3))) < 0)
-                    sp->factor += (((value + (sp->filter6 << 3)) ^ (byte << 31)) >> 31) | 1;
+                    sp->factor += (((value + (sp->filter6 << 3)) ^ (sp->byte << 31)) >> 31) | 1;
 
                 sp->filter3 += (sp->filter2 - sp->filter3) >> 4;
                 sp->filter4 += (sp->filter3 - sp->filter4) >> 4;
                 sp->filter5 += value = (sp->filter4 - sp->filter5) >> 4;
                 sp->filter6 += (value - sp->filter6) >> 3;
+                sp = state + (channel ^= stereo);
             }
 
-            *outp++ = byte;
-            channel ^= stereo;
+            sp->factor -= (sp->factor + 512) >> 10;
+            *outp++ = sp->byte;
 
             if (outp - output_buffer == 65536) {
                 bytes_written += fwrite (output_buffer, 1, outp - output_buffer, outfile);
                 outp = output_buffer;
+            }
+
+            if (stereo && (num_loops || !(num_samples & 1))) {
+                state [1].factor -= (state [1].factor + 512) >> 10;
+                *outp++ = state [1].byte;
+
+                if (outp - output_buffer == 65536) {
+                    bytes_written += fwrite (output_buffer, 1, outp - output_buffer, outfile);
+                    outp = output_buffer;
+                }
             }
         }
     }

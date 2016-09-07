@@ -42,7 +42,7 @@ int encode_fast (FILE *infile, FILE *outfile, int stereo, int block_size)
     unsigned char *buffer = malloc (block_size);
     time_t start_time = time (NULL);
 
-    fwrite ("dsdpack0.5", 1, 10, outfile);
+    fwrite ("dsdpack0.6", 1, 10, outfile);
     fputc ('F', outfile);
     fputc (stereo + '1', outfile);
 

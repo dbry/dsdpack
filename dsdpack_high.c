@@ -41,6 +41,9 @@ typedef struct chan_state {
 #define VALUE_ONE (1 << PRECISION)
 #define PRECISION_USE 12
 
+#define F_ROUND (VALUE_ONE >> 9)
+#define F_SHIFT (PRECISION - 8)
+
 #define RATE_S 20
 
 #ifdef DUMP_INFO
@@ -202,19 +205,19 @@ int encode_high (FILE *infile, FILE *outfile, int stereo, int block_size)
         for (channel = 0; channel <= stereo; ++channel) {
             sp = state + channel;
 
-            *outp++ = (sp->filter1 + 32768) >> 16;
-            *outp++ = (sp->filter2 + 32768) >> 16;
-            *outp++ = (sp->filter3 + 32768) >> 16;
-            *outp++ = (sp->filter4 + 32768) >> 16;
-            *outp++ = (sp->filter5 + 32768) >> 16;
+            *outp++ = (sp->filter1 + F_ROUND) >> F_SHIFT;
+            *outp++ = (sp->filter2 + F_ROUND) >> F_SHIFT;
+            *outp++ = (sp->filter3 + F_ROUND) >> F_SHIFT;
+            *outp++ = (sp->filter4 + F_ROUND) >> F_SHIFT;
+            *outp++ = (sp->filter5 + F_ROUND) >> F_SHIFT;
             *outp++ = sp->factor;
             *outp++ = sp->factor >> 8;
 
-            sp->filter1 = ((sp->filter1 + 32768) >> 16) << 16;
-            sp->filter2 = ((sp->filter2 + 32768) >> 16) << 16;
-            sp->filter3 = ((sp->filter3 + 32768) >> 16) << 16;
-            sp->filter4 = ((sp->filter4 + 32768) >> 16) << 16;
-            sp->filter5 = ((sp->filter5 + 32768) >> 16) << 16;
+            sp->filter1 = ((sp->filter1 + F_ROUND) >> F_SHIFT) << F_SHIFT;
+            sp->filter2 = ((sp->filter2 + F_ROUND) >> F_SHIFT) << F_SHIFT;
+            sp->filter3 = ((sp->filter3 + F_ROUND) >> F_SHIFT) << F_SHIFT;
+            sp->filter4 = ((sp->filter4 + F_ROUND) >> F_SHIFT) << F_SHIFT;
+            sp->filter5 = ((sp->filter5 + F_ROUND) >> F_SHIFT) << F_SHIFT;
             sp->filter6 = 0;
         }
 
@@ -355,11 +358,11 @@ int decode_high (FILE *infile, FILE *outfile, int stereo)
         for (channel = 0; channel <= stereo; ++channel) {
             sp = state + channel;
 
-            sp->filter1 = *pp++ << 16;
-            sp->filter2 = *pp++ << 16;
-            sp->filter3 = *pp++ << 16;
-            sp->filter4 = *pp++ << 16;
-            sp->filter5 = *pp++ << 16;
+            sp->filter1 = *pp++ << F_SHIFT;
+            sp->filter2 = *pp++ << F_SHIFT;
+            sp->filter3 = *pp++ << F_SHIFT;
+            sp->filter4 = *pp++ << F_SHIFT;
+            sp->filter5 = *pp++ << F_SHIFT;
             sp->filter6 = 0;
             sp->factor = *pp++ & 0xff;
             sp->factor |= (*pp++ << 8) & 0xff00;

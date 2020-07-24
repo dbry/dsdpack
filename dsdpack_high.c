@@ -41,7 +41,6 @@ typedef struct chan_state {
 #define VALUE_ONE (1 << PRECISION)
 #define PRECISION_USE 12
 
-#define F_ROUND (VALUE_ONE >> 9)
 #define F_SHIFT (PRECISION - 8)
 
 #define RATE_S 20
@@ -205,19 +204,23 @@ int encode_high (FILE *infile, FILE *outfile, int stereo, int block_size)
         for (channel = 0; channel <= stereo; ++channel) {
             sp = state + channel;
 
-            *outp++ = (sp->filter1 + F_ROUND) >> F_SHIFT;
-            *outp++ = (sp->filter2 + F_ROUND) >> F_SHIFT;
-            *outp++ = (sp->filter3 + F_ROUND) >> F_SHIFT;
-            *outp++ = (sp->filter4 + F_ROUND) >> F_SHIFT;
-            *outp++ = (sp->filter5 + F_ROUND) >> F_SHIFT;
+            *outp = sp->filter1 >> F_SHIFT;
+            sp->filter1 = *outp++ << F_SHIFT;
+
+            *outp = sp->filter2 >> F_SHIFT;
+            sp->filter2 = *outp++ << F_SHIFT;
+
+            *outp = sp->filter3 >> F_SHIFT;
+            sp->filter3 = *outp++ << F_SHIFT;
+
+            *outp = sp->filter4 >> F_SHIFT;
+            sp->filter4 = *outp++ << F_SHIFT;
+
+            *outp = sp->filter5 >> F_SHIFT;
+            sp->filter5 = *outp++ << F_SHIFT;
+
             *outp++ = sp->factor;
             *outp++ = sp->factor >> 8;
-
-            sp->filter1 = ((sp->filter1 + F_ROUND) >> F_SHIFT) << F_SHIFT;
-            sp->filter2 = ((sp->filter2 + F_ROUND) >> F_SHIFT) << F_SHIFT;
-            sp->filter3 = ((sp->filter3 + F_ROUND) >> F_SHIFT) << F_SHIFT;
-            sp->filter4 = ((sp->filter4 + F_ROUND) >> F_SHIFT) << F_SHIFT;
-            sp->filter5 = ((sp->filter5 + F_ROUND) >> F_SHIFT) << F_SHIFT;
             sp->filter6 = 0;
         }
 

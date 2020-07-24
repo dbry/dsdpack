@@ -51,7 +51,7 @@ static int decode (FILE *infile, FILE *outfile)
 /*------------------------------------------------------------------------------------------------------------------------*/
 
 static const char *usage = "\n"
-" Version: 0.6.0\n\n"
+" Version: 0.6.1 (final)\n\n"
 " Usage:   DSDPACK [-options] infile outfile\n\n"
 " Options: -d     = decode\n"
 "          -1     = mono mode (encode only)\n"
